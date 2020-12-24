@@ -10,20 +10,21 @@ from pathlib import Path
 import sqlite3
 from sqlite3 import Connection
 import streamlit as st
+from datetime import timedelta
 import datetime as dt
 import plotly.graph_objects as go
 import base64
 from io import BytesIO
 
-DATABASE_NAME = "myint_lwin_health_records"
-URI_SQLITE_DB = DATABASE_NAME + ".db"
+# DATABASE_NAME = "myint_lwin_health_records"
+# URI_SQLITE_DB = DATABASE_NAME + ".db"
 
 def main():
-    st.title("My Health Tracker")
+    st.title("Health Tracker")
     st.markdown("Use this web application to store, update and monitor your health records.")
-    s1, s2, s3 = st.beta_columns([1, 1, 1])
-    s1.write("Name of Database: ")
-    s2.text(DATABASE_NAME)
+    selected_user = st.selectbox("Select user", ["U Myint Lwin", "Daw Le Le Oo"])
+    DATABASE_NAME = '_'.join(selected_user.lower().split()) + '_health_records'
+    URI_SQLITE_DB = DATABASE_NAME + ".db"
     conn = get_connection(URI_SQLITE_DB)
     init_db(conn)
     health_record = st.selectbox("Select health record to update", ["Blood Pressure", "Resting Heart Rate", "Body Mass Index"])
@@ -31,9 +32,8 @@ def main():
     if health_record == "Blood Pressure":
         a1, a2, a3 = st.beta_columns([1, 2, 2])
         date = a1.date_input('Date of measurement', dt.date.today(), key='1')
-        date = date.strftime("%Y-%m-%d") 
-        lower = a2.slider("Diastolic (lower) blood pressure (mmHg)", 40, 120)
-        upper = a3.slider("Systolic (upper) blood pressure (mmHg)", 60, 180)
+        lower = a2.number_input("Diastolic (lower) blood pressure (mmHg)", min_value=40, value=60)
+        upper = a3.number_input("Systolic (upper) blood pressure (mmHg)", min_value=60, value=90)
         
         if st.button("Save record", key='1'):
             conn.execute(f"INSERT INTO blood_pressure_table (Date, Lower, Upper) VALUES (?, ?, ?)", (date, lower, upper))
@@ -45,6 +45,20 @@ def main():
 
         if view_mode == "Table":
             output_ex.table(df_blood_pressure)
+            
+            # if output_ex.button("Edit record", key='4'):
+            #     index = output_ex.number_input("Enter row number", min_value=0, value=0, step=1)
+            #     if output_ex.button("Retrieve record", key='5'):
+            #         date_to_edit = df_blood_pressure["Date"][index]
+            #         lower_to_edit = df_blood_pressure["Diastolic (Lower)"][index]
+            #         upper_to_edit = df_blood_pressure["Systolic (Upper)"][index]
+            #         # st.text(date_to_edit)
+            #         e1, e2, e3 = output_ex.beta_columns([1, 2, 2])
+            #         date_editted = e1.date_input('Date of measurement', date_to_edit, key='2')
+            #         # date_editted = date_editted.strftime("%Y-%m-%d") 
+            #         lower_editted = e2.number_input("Diastolic (lower) blood pressure (mmHg)", min_value=40, value=lower_to_edit, key='2')
+            #         upper_editted = e3.number_input("Systolic (upper) blood pressure (mmHg)", min_value=60, value=upper_to_edit, key='2')
+        
         else:
             fig1 = plot_blood_pressure(df_blood_pressure)
             output_ex.plotly_chart(fig1)
@@ -58,7 +72,7 @@ def main():
         b1, b2 = st.beta_columns(2)
         date = b1.date_input('Date of measurement', dt.date.today(), key='2')
         date = date.strftime("%Y-%m-%d")  
-        heart_rate = b2.slider("Resting heart rate (beats per minute)", 40, 150)
+        heart_rate = b2.number_input("Resting heart rate (beats per minute)", min_value=40, value=75)
 
         if st.button("Save record", key='2'):
             conn.execute(f"INSERT INTO heart_rate_table (Date, HeartRate) VALUES (?, ?)", (date, heart_rate))
@@ -78,9 +92,9 @@ def main():
         c1, c2, c3 = st.beta_columns(3)
         date = c1.date_input('Date of measurement', dt.date.today(), key='3')
         date = date.strftime("%Y-%m-%d")    
-        weight = c2.slider("Weight (kg)", 63.0, 75.0, value=67.3, step=0.1)
+        weight = c2.number_input("Weight (kg)", min_value=63.0, value=67.3, step=0.1)
         weight = round(weight, 1)
-        height = c3.slider("Height (m)", 1.6, 1.8, value=1.72, step=0.01)
+        height = c3.number_input("Height (m)", min_value=1.2, value=1.72, step=0.01)
         height = round(height, 2)
         bmi = round(weight / (height**2), 1)
         bmi1, bmi2, bmi3 = st.beta_columns(3)
@@ -134,7 +148,10 @@ def plot_heart_rate(data):
     fig.add_trace(go.Scatter(
         x=list(data['Date']),
         y=list(data['Resting Heart Rate']), 
-        connectgaps=True
+        connectgaps=True,
+        marker=dict(
+                color='purple',
+                size=11)
     ))
     fig.update_yaxes(
             title_text = "Resting Heart Rate (beats per minute)")
@@ -150,7 +167,10 @@ def plot_weight(data):
     fig.add_trace(go.Scatter(
         x=list(data['Date']),
         y=list(data['Weight']), 
-        connectgaps=True 
+        connectgaps=True,
+        marker=dict(
+                color='orange',
+                size=11)
     ))
     fig.update_yaxes(
             title_text = "Weight (kg)")
@@ -189,8 +209,13 @@ def plot_blood_pressure(data):
         x=x,
         y=y,
         name='Gaps',
-        connectgaps=False
-    ))
+        connectgaps=False,
+        marker=dict(
+                color='green',
+                size=11)
+        ))
+    fig.update_layout(xaxis_range=[(min(x) - timedelta(days=5)).to_pydatetime(),
+                                   (max(x) + timedelta(days=5)).to_pydatetime()])
     fig.update_yaxes(
             title_text = "Blood Pressure (mmHg)")
     fig.update_layout(
@@ -206,13 +231,19 @@ def plot_blood_pressure_line(data):
         x=data['Date'],
         y=data['Diastolic (Lower)'],
         name='Diastolic Blood Pressure',
-        connectgaps=True 
+        connectgaps=True,
+        marker=dict(
+                color='blue',
+                size=11)
     ))
     fig.add_trace(go.Scatter(
         x=data['Date'],
         y=data['Systolic (Upper)'], 
         name='Systolic Blood Pressure',
-        connectgaps=True 
+        connectgaps=True,
+        marker=dict(
+                color='red',
+                size=11)
     ))
     fig.update_layout(legend=dict(
         orientation="h",
@@ -262,8 +293,8 @@ def get_blood_pressure_data(conn: Connection):
     df = pd.read_sql("SELECT * FROM blood_pressure_table", con=conn)
     df.columns = ['Date', 'Diastolic (Lower)', 'Systolic (Upper)']
     df['Date'] = pd.to_datetime(df['Date'], format="%Y-%m-%d")
-    df['Date'] = df['Date'].dt.strftime("%d-%m-%Y")
-    df['Date'] = pd.to_datetime(df['Date'], format="%d-%m-%Y")
+    # df['Date'] = df['Date'].dt.strftime("%d-%m-%Y")
+    # df['Date'] = pd.to_datetime(df['Date'], format="%d-%m-%Y")
 
     return df
 
@@ -271,16 +302,16 @@ def get_heart_rate_data(conn: Connection):
     df = pd.read_sql("SELECT * FROM heart_rate_table", con=conn)
     df.columns = ['Date', 'Resting Heart Rate']
     df['Date'] = pd.to_datetime(df['Date'], format="%Y-%m-%d")
-    df['Date'] = df['Date'].dt.strftime("%d-%m-%Y")
-    df['Date'] = pd.to_datetime(df['Date'], format="%d-%m-%Y")
+    # df['Date'] = df['Date'].dt.strftime("%d-%m-%Y")
+    # df['Date'] = pd.to_datetime(df['Date'], format="%d-%m-%Y")
 
     return df
 
 def get_bmi_data(conn: Connection):
     df = pd.read_sql("SELECT * FROM bmi_table", con=conn)
     df['Date'] = pd.to_datetime(df['Date'], format="%Y-%m-%d")
-    df['Date'] = df['Date'].dt.strftime("%d-%m-%Y")
-    df['Date'] = pd.to_datetime(df['Date'], format="%d-%m-%Y")
+    # df['Date'] = df['Date'].dt.strftime("%d-%m-%Y")
+    # df['Date'] = pd.to_datetime(df['Date'], format="%d-%m-%Y")
 
     return df
 
